@@ -17,7 +17,7 @@ A full-stack inventory management application for maintaining items, recording s
 
 ## Setup
 
-1. Clone or download the repository.
+1. Clone or download the repository(https://github.com/hossainalazad90/InventoryManagement).
 2. Configure the backend connection string if LocalDB is unavailable. Update `backend/src/Inventory.Api/appsettings.json` or use a local override such as `appsettings.Local.json` (ignored by Git).
 3. Configure the frontend API endpoint. Create `frontend/inventory-web/.env` with:
 
