@@ -1,0 +1,27 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio and user-specific files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# ASP.NET Core local configuration and secrets
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+
+# Test and tooling output
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# OS and editor files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
