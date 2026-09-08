@@ -4,7 +4,7 @@ import type { Detail } from "../models/Detail";
 import type { Item } from "../models/Item";
 import type { Store } from "../models/Store";
 import type { Unit } from "../models/Unit";
-import { master } from "../services/inventory";
+import { master } from "../services/masterService";
 import { items } from "../services/itemService";
 import { transactions } from "../services/transactionService";
 import { stock } from "../services/stockService";

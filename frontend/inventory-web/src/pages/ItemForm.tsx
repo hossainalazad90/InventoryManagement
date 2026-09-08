@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Category } from "../models/Category";
 import type { Unit } from "../models/Unit";
-import { master } from "../services/inventory";
+import { master } from "../services/masterService";
 import { items } from "../services/itemService";
 export function ItemForm() {
   const { id } = useParams(),
