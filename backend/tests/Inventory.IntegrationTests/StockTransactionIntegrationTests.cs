@@ -81,6 +81,10 @@ public class StockTransactionIntegrationTests : IClassFixture<CustomWebApplicati
     [Fact]
     public async Task UpdateStockTransaction_MultiDetailDelta_HandlesNewModifiedAndDeletedCorrectly()
     {
+        var item3Before = (await _client.GetFromJsonAsync<ApiResponse<StockBalanceDto>>("/api/v1/stock?itemId=3&storeId=1"))!.Data!.AvailableQuantity;
+        var item4Before = (await _client.GetFromJsonAsync<ApiResponse<StockBalanceDto>>("/api/v1/stock?itemId=4&storeId=1"))!.Data!.AvailableQuantity;
+        var item5Before = (await _client.GetFromJsonAsync<ApiResponse<StockBalanceDto>>("/api/v1/stock?itemId=5&storeId=1"))!.Data!.AvailableQuantity;
+
         // 1. Create transaction with 2 details (Receive 100 of Item 3 and 100 of Item 4)
         var createDto = new CreateStockTransactionDto(
             DateTime.UtcNow,
@@ -128,5 +132,14 @@ public class StockTransactionIntegrationTests : IClassFixture<CustomWebApplicati
         updatedTx.Details.Should().NotContain(d => d.Id == row2.Id);
         updatedTx.Details.First(d => d.Id == row1.Id).Quantity.Should().Be(150m);
         updatedTx.Details.First(d => d.ItemId == 5).Quantity.Should().Be(30m);
+
+        // The old ledger rows are replaced atomically with the reconciled state:
+        // item 3 is modified, item 4 is removed, and item 5 is newly added.
+        var item3After = (await _client.GetFromJsonAsync<ApiResponse<StockBalanceDto>>("/api/v1/stock?itemId=3&storeId=1"))!.Data!.AvailableQuantity;
+        var item4After = (await _client.GetFromJsonAsync<ApiResponse<StockBalanceDto>>("/api/v1/stock?itemId=4&storeId=1"))!.Data!.AvailableQuantity;
+        var item5After = (await _client.GetFromJsonAsync<ApiResponse<StockBalanceDto>>("/api/v1/stock?itemId=5&storeId=1"))!.Data!.AvailableQuantity;
+        item3After.Should().Be(item3Before + 150m);
+        item4After.Should().Be(item4Before);
+        item5After.Should().Be(item5Before + 30m);
     }
 }

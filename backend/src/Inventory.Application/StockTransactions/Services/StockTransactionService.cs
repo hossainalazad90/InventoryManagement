@@ -240,17 +240,54 @@ public class StockTransactionService : IStockTransactionService
                 });
             }
 
-            // Step 1: Temporarily remove all existing StockMovements for this transaction
-            var existingMovements = await _context.StockMovements
-                .Where(m => m.StockTransactionId == id)
-                .ToListAsync(ct);
+            // Classify each submitted detail by its ID. A zero ID is new; a known
+            // ID is modified; an existing ID absent from the payload is deleted.
+            var existingDetailMap = existingTx.Details.ToDictionary(d => d.Id);
+            var incomingExistingIds = dto.Details
+                .Where(d => d.Id > 0)
+                .Select(d => d.Id)
+                .ToHashSet();
+            var deletedDetailIds = (dto.DeletedDetailIds ?? [])
+                .ToHashSet();
 
-            _context.StockMovements.RemoveRange(existingMovements);
-            await _context.SaveChangesAsync(ct);
+            var unknownIncomingIds = incomingExistingIds
+                .Where(detailId => !existingDetailMap.ContainsKey(detailId))
+                .ToList();
+            var unknownDeletedIds = deletedDetailIds
+                .Where(detailId => !existingDetailMap.ContainsKey(detailId))
+                .ToList();
+            var conflictingIds = incomingExistingIds
+                .Intersect(deletedDetailIds)
+                .ToList();
 
-            // Step 2: Validate available stock for the new state if TransactionType is Issue
+            if (unknownIncomingIds.Count > 0 || unknownDeletedIds.Count > 0 || conflictingIds.Count > 0)
+            {
+                throw new ValidationException(new Dictionary<string, string[]>
+                {
+                    ["Details"] = ["Detail IDs must belong to the transaction and cannot be both updated and deleted."]
+                });
+            }
+
+            var detailsToDelete = existingTx.Details
+                .Where(detail => !incomingExistingIds.Contains(detail.Id) || deletedDetailIds.Contains(detail.Id))
+                .ToList();
+
+            // Validate items and calculate issue availability against the ledger
+            // excluding this transaction's old movements. This makes a header
+            // change (store/type/date) and all detail changes evaluate as one new state.
             var itemIds = dto.Details.Select(d => d.ItemId).Distinct().ToList();
             var items = await _context.Items.Include(i => i.Unit).Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+
+            foreach (var detail in dto.Details)
+            {
+                if (!items.TryGetValue(detail.ItemId, out var item) || !item.IsActive)
+                {
+                    throw new ValidationException(new Dictionary<string, string[]>
+                    {
+                        ["Details"] = [$"Item ID {detail.ItemId} is invalid or inactive."]
+                    });
+                }
+            }
 
             if (dto.TransactionType == TransactionType.Issue)
             {
@@ -261,7 +298,7 @@ public class StockTransactionService : IStockTransactionService
                 foreach (var (itemId, requestedQty) in requestedByItem)
                 {
                     var available = await _context.StockMovements
-                        .Where(m => m.ItemId == itemId && m.StoreId == dto.StoreId)
+                        .Where(m => m.StockTransactionId != id && m.ItemId == itemId && m.StoreId == dto.StoreId)
                         .SumAsync(m => (decimal?)m.SignedQuantity, ct) ?? 0m;
 
                     if (requestedQty > available)
@@ -277,39 +314,27 @@ public class StockTransactionService : IStockTransactionService
                 }
             }
 
-            // Step 3: Update header
+            // Update the header and apply the detail delta in the same unit of work.
             existingTx.TransactionDate = dto.TransactionDate;
             existingTx.TransactionType = dto.TransactionType;
             existingTx.StoreId = dto.StoreId;
             existingTx.Remarks = dto.Remarks?.Trim();
             existingTx.UpdatedAt = DateTime.UtcNow;
 
-            // Step 4: Identify Delta: New, Modified, Deleted details
-            var incomingDetailIds = dto.Details.Where(d => d.Id > 0).Select(d => d.Id).ToHashSet();
-            var existingDetailMap = existingTx.Details.ToDictionary(d => d.Id);
+            var existingMovements = await _context.StockMovements
+                .Where(m => m.StockTransactionId == id)
+                .ToListAsync(ct);
+            _context.StockMovements.RemoveRange(existingMovements);
+            _context.StockTransactionDetails.RemoveRange(detailsToDelete);
 
-            // Deleted details: either explicitly requested in DeletedDetailIds or existing details missing from incoming Details
-            var toDelete = existingTx.Details
-                .Where(d => !incomingDetailIds.Contains(d.Id) || (dto.DeletedDetailIds != null && dto.DeletedDetailIds.Contains(d.Id)))
-                .ToList();
-
-            foreach (var del in toDelete)
-            {
-                _context.StockTransactionDetails.Remove(del);
-                existingDetailMap.Remove(del.Id);
-            }
-
-            // Save deletions before applying modifications/insertions
-            await _context.SaveChangesAsync(ct);
-
-            // Modified and New details
+            // Update known details and add rows that carry the new-record ID (0).
             foreach (var detailDto in dto.Details)
             {
                 StockTransactionDetail detailEntity;
 
-                if (detailDto.Id > 0 && existingDetailMap.TryGetValue(detailDto.Id, out var existingDetail))
+                if (detailDto.Id > 0)
                 {
-                    // Modified Detail
+                    var existingDetail = existingDetailMap[detailDto.Id];
                     detailEntity = existingDetail;
                     detailEntity.ItemId = detailDto.ItemId;
                     detailEntity.Quantity = detailDto.Quantity;
@@ -320,7 +345,6 @@ public class StockTransactionService : IStockTransactionService
                 }
                 else
                 {
-                    // New Detail (Id == 0 or newly added)
                     detailEntity = new StockTransactionDetail
                     {
                         StockTransactionId = existingTx.Id,
@@ -334,13 +358,12 @@ public class StockTransactionService : IStockTransactionService
                     _context.StockTransactionDetails.Add(detailEntity);
                 }
 
-                await _context.SaveChangesAsync(ct); // persist to ensure detailEntity.Id is populated
-
-                // Re-create Stock Movement
+                // Attach via navigation so EF can generate a new detail ID and its
+                // replacement movement in this single SaveChanges/DB transaction.
                 var movement = new StockMovement
                 {
                     StockTransactionId = existingTx.Id,
-                    StockTransactionDetailId = detailEntity.Id,
+                    StockTransactionDetail = detailEntity,
                     ItemId = detailDto.ItemId,
                     StoreId = dto.StoreId,
                     TransactionDate = dto.TransactionDate,
