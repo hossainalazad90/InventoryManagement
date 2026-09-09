@@ -22,7 +22,7 @@ public class RdlcReportGenerator : IRdlcReportGenerator
             throw new FileNotFoundException($"RDLC report definition not found at: {rdlcPath}");
         }
 
-        using var localReport = new LocalReport();
+        using var localReport = new LocalReport();        
         using var rdlcStream = File.OpenRead(rdlcPath);
         localReport.LoadReportDefinition(rdlcStream);
 

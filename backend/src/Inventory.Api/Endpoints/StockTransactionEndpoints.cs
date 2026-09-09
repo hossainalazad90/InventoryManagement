@@ -3,8 +3,6 @@ using Inventory.Application.StockTransactions.DTOs;
 using Inventory.Application.StockTransactions.Services;
 using Inventory.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Inventory.Api.Endpoints;
 
@@ -60,7 +58,6 @@ public static class StockTransactionEndpoints
         .WithName("UpdateStockTransaction")
         .WithSummary("Update transaction with delta detection for new/modified/deleted details");
 
-// Existing endpoint to delete a whole transaction
         group.MapDelete("/{id:int}", async (int id, IStockTransactionService service, CancellationToken ct) =>
         {
             await service.DeleteAsync(id, ct);

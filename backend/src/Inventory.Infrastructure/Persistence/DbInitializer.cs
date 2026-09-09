@@ -12,7 +12,7 @@ public static class DbInitializer
 
         if (await context.Categories.AnyAsync())
         {
-            return; // DB has been seeded
+            return; 
         }
 
         // 1. Seed Categories

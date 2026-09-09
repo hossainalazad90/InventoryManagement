@@ -23,8 +23,7 @@ public class ReportQueryService : IReportQueryService
     {
         var start = fromDate.Date;
         var end = toDate.Date.AddDays(1).AddTicks(-1);
-
-        // Fetch items and stores in scope
+        
         var itemsQuery = _context.Items.Include(i => i.Unit).AsNoTracking();
         if (itemId.HasValue) itemsQuery = itemsQuery.Where(i => i.Id == itemId.Value);
         var itemsList = await itemsQuery.ToListAsync(ct);
@@ -115,11 +114,9 @@ public class ReportQueryService : IReportQueryService
             .OrderBy(m => m.TransactionDate)
             .ThenBy(m => m.Id)
             .ToListAsync(ct);
-
-        // Compute running balance per (ItemId, StoreId)
+        
         var runningBalances = new Dictionary<(int ItemId, int StoreId), decimal>();
-
-        // Pre-fetch initial opening balance for each (ItemId, StoreId) in movements before start date
+        
         var itemStorePairs = movements.Select(m => (m.ItemId, m.StoreId)).Distinct().ToList();
         foreach (var pair in itemStorePairs)
         {

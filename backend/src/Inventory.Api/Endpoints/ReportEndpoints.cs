@@ -9,7 +9,7 @@ public static class ReportEndpoints
 {
     public static RouteGroupBuilder MapReportEndpoints(this RouteGroupBuilder group)
     {
-        // Stock Movement JSON
+
         group.MapGet("/stock-movement", async (
             [FromQuery] DateTime? fromDate,
             [FromQuery] DateTime? toDate,
@@ -27,7 +27,6 @@ public static class ReportEndpoints
         .WithName("GetStockMovementReport")
         .WithSummary("Get Stock Movement report data (Opening, Receive, Issue, Return, Closing)");
 
-        // Stock Movement Export (PDF or Excel)
         group.MapGet("/stock-movement/export", async (
             [FromQuery] string? format,
             [FromQuery] DateTime? fromDate,
@@ -55,7 +54,6 @@ public static class ReportEndpoints
         .WithName("ExportStockMovementReport")
         .WithSummary("Export Stock Movement report to PDF or Excel via RDLC");
 
-        // Transaction Details JSON
         group.MapGet("/transaction-details", async (
             [FromQuery] DateTime? fromDate,
             [FromQuery] DateTime? toDate,
@@ -73,7 +71,6 @@ public static class ReportEndpoints
         .WithName("GetTransactionDetailsReport")
         .WithSummary("Get Transaction Details report data with running stock levels");
 
-        // Transaction Details Export (PDF or Excel)
         group.MapGet("/transaction-details/export", async (
             [FromQuery] string? format,
             [FromQuery] DateTime? fromDate,
