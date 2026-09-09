@@ -78,7 +78,10 @@ export function StockTransactionForm() {
   function remove(i: number) {
     setForm((p) => {
       const removed = p.details[i];
-      if (removed.id) setDeleted((x) => [...x, removed.id]);
+      if (removed.id) {
+        // Add the id only once
+        setDeleted((x) => (x.includes(removed.id) ? x : [...x, removed.id]));
+      }
       return { ...p, details: p.details.filter((_, n) => n !== i) };
     });
   }
@@ -105,13 +108,14 @@ export function StockTransactionForm() {
         }
       }
       const payload = id
-        ? {
-            transactionId: +id,
-            ...form,
-            details: form.details,
-            deletedDetailIds: deleted,
-          }
-        : form;
+          ? {
+              transactionId: +id,
+              ...form,
+              details: form.details,
+              // Ensure no duplicate IDs are sent
+              deletedDetailIds: Array.from(new Set(deleted)),
+            }
+          : form;
       await transactions.save(payload, id ? +id : undefined);
       nav("/transactions");
     } catch (e) {

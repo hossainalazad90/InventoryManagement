@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using Inventory.Application.Common;
 using Inventory.Application.StockTransactions.DTOs;
 using Inventory.Domain.Entities;
@@ -247,8 +247,7 @@ public class StockTransactionService : IStockTransactionService
                 .Where(d => d.Id > 0)
                 .Select(d => d.Id)
                 .ToHashSet();
-            var deletedDetailIds = (dto.DeletedDetailIds ?? [])
-                .ToHashSet();
+            var deletedDetailIds = (dto.DeletedDetailIds ?? []).Distinct().ToHashSet();
 
             var unknownIncomingIds = incomingExistingIds
                 .Where(detailId => !existingDetailMap.ContainsKey(detailId))
@@ -267,18 +266,23 @@ public class StockTransactionService : IStockTransactionService
                     ["Details"] = ["Detail IDs must belong to the transaction and cannot be both updated and deleted."]
                 });
             }
-
-            var detailsToDelete = existingTx.Details
+        var detailsToDelete = existingTx.Details
                 .Where(detail => !incomingExistingIds.Contains(detail.Id) || deletedDetailIds.Contains(detail.Id))
                 .ToList();
 
-            // Validate items and calculate issue availability against the ledger
-            // excluding this transaction's old movements. This makes a header
-            // change (store/type/date) and all detail changes evaluate as one new state.
-            var itemIds = dto.Details.Select(d => d.ItemId).Distinct().ToList();
-            var items = await _context.Items.Include(i => i.Unit).Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+            // Ensure we have a collection even if the client sent null – allows deletions without updates
+            var detailDtos = dto.Details ?? new List<UpdateStockTransactionDetailDto>();
 
-            foreach (var detail in dto.Details)
+            // Exclude details that are marked for deletion
+            var keptDetailDtos = detailDtos.Where(d => d.Id == 0 || !deletedDetailIds.Contains(d.Id)).ToList();
+
+            // Validate items only for the details that are being kept/updated (ignore null list)
+            var itemIds = keptDetailDtos.Select(d => d.ItemId).Distinct().ToList();
+            var items = itemIds.Any()
+                ? await _context.Items.Include(i => i.Unit).Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct)
+                : new Dictionary<int, Item>();
+
+            foreach (var detail in keptDetailDtos)
             {
                 if (!items.TryGetValue(detail.ItemId, out var item) || !item.IsActive)
                 {
@@ -289,9 +293,10 @@ public class StockTransactionService : IStockTransactionService
                 }
             }
 
+            // If this is an Issue transaction, validate sufficient stock for the remaining/new details
             if (dto.TransactionType == TransactionType.Issue)
             {
-                var requestedByItem = dto.Details
+                var requestedByItem = keptDetailDtos
                     .GroupBy(d => d.ItemId)
                     .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
@@ -328,7 +333,7 @@ public class StockTransactionService : IStockTransactionService
             _context.StockTransactionDetails.RemoveRange(detailsToDelete);
 
             // Update known details and add rows that carry the new-record ID (0).
-            foreach (var detailDto in dto.Details)
+            foreach (var detailDto in keptDetailDtos)
             {
                 StockTransactionDetail detailEntity;
 
